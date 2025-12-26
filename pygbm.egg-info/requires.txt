@@ -1,4 +1,4 @@
-numpy
-scipy
-scikit-learn
 numba
+numpy
+scikit-learn
+scipy
