@@ -7,14 +7,6 @@ Experimental Histogram Based Multi-Output Gradient Boosting Machines in Python.
 An implementation of the paper [Exploiting random projections and sparsity with random forests and gradient boosting methods](https://arxiv.org/abs/1704.08067) on histogram based gradient boosting trees. 
 Based on [pygbm](https://github.com/ogrisel/pygbm/)
 
-## Recent Optimizations
-
-**🚀 Massive Performance Improvement**: Multi-output predictions are now **~400x faster** thanks to optimized residual storage and Numba JIT compilation. See [OPTIMIZATION.md](OPTIMIZATION.md) for details.
-
-- **Before**: ~214ms per 1000 predictions (10 targets)
-- **After**: ~1.4ms per 1000 predictions (10 targets)
-- **Throughput**: Over 1 million predictions/second on typical datasets
-
 ## Installation
 
 Use pip to install in "editable" mode:
