@@ -171,7 +171,7 @@ class TreePredictor:
         return out
 
 
-@njit
+@njit(fastmath=True)
 def _predict_one_binned(nodes, binned_data):
     node = nodes[0]
     while True:
@@ -183,13 +183,13 @@ def _predict_one_binned(nodes, binned_data):
             node = nodes[node['right']]
 
 
-@njit(parallel=True)
+@njit(parallel=True, fastmath=True)
 def _predict_binned(nodes, binned_data, out):
     for i in prange(binned_data.shape[0]):
         out[i] = _predict_one_binned(nodes, binned_data[i])
 
 
-@njit
+@njit(fastmath=True)
 def _predict_one_from_numeric_data(nodes, numeric_data):
     node = nodes[0]
     while True:
@@ -201,13 +201,13 @@ def _predict_one_from_numeric_data(nodes, numeric_data):
             node = nodes[node['right']]
 
 
-@njit(parallel=True)
+@njit(parallel=True, fastmath=True)
 def _predict_from_numeric_data(nodes, numeric_data, out):
     for i in prange(numeric_data.shape[0]):
         out[i] = _predict_one_from_numeric_data(nodes, numeric_data[i])
 
 # ##########################Multi###############################
-@njit
+@njit(fastmath=True)
 def _predict_one_binned_multi(nodes, residuals, binned_data):
     """Predict single sample using binned data for multi-output.
     
@@ -235,7 +235,7 @@ def _predict_one_binned_multi(nodes, residuals, binned_data):
             node = nodes[node['right']]
 
 
-@njit(parallel=True)
+@njit(parallel=True, fastmath=True)
 def _predict_binned_multi(nodes, residuals, binned_data, out):
     """Predict multiple samples using binned data for multi-output.
     
@@ -256,7 +256,7 @@ def _predict_binned_multi(nodes, residuals, binned_data, out):
             out[i, j] = residuals[residual_idx, j]
 
 
-@njit
+@njit(fastmath=True)
 def _predict_one_from_numeric_data_multi(nodes, residuals, numeric_data):
     """Predict single sample using numeric data for multi-output.
     
@@ -284,7 +284,7 @@ def _predict_one_from_numeric_data_multi(nodes, residuals, numeric_data):
             node = nodes[node['right']]
 
 
-@njit(parallel=True)
+@njit(parallel=True, fastmath=True)
 def _predict_from_numeric_data_multi(nodes, residuals, numeric_data, out):
     """Predict multiple samples using numeric data for multi-output.
     
