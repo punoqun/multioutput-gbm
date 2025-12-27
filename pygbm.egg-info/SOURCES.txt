@@ -1,3 +1,4 @@
+LICENSE.txt
 README.md
 setup.py
 pygbm/__init__.py
@@ -16,3 +17,14 @@ pygbm.egg-info/dependency_links.txt
 pygbm.egg-info/not-zip-safe
 pygbm.egg-info/requires.txt
 pygbm.egg-info/top_level.txt
+tests/test_binning.py
+tests/test_compare_lightgbm.py
+tests/test_gradient_boosting.py
+tests/test_grower.py
+tests/test_histogram.py
+tests/test_loss.py
+tests/test_multioutput_optimization.py
+tests/test_multioutput_regression.py
+tests/test_plotting.py
+tests/test_predictor.py
+tests/test_splitting.py

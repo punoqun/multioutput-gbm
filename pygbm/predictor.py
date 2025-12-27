@@ -8,7 +8,7 @@ from numba import njit, prange
 PREDICTOR_RECORD_DTYPE = np.dtype([
     ('is_leaf', np.uint8),
     ('value', np.float32),
-    ('residual', np.ndarray),
+    ('residual_idx', np.int32),  # Index into separate residual array, -1 for single output
     ('count', np.uint32),
     ('feature_idx', np.uint32),
     ('bin_threshold', np.uint8),
@@ -27,10 +27,13 @@ class TreePredictor:
     ----------
     nodes : list of PREDICTOR_RECORD_DTYPE.
         The nodes of the tree.
+    residuals : array-like, shape=(n_leaves, n_outputs), optional
+        Array of residual values for multi-output predictions. None for single output.
     """
-    def __init__(self, nodes, has_numerical_thresholds=True):
+    def __init__(self, nodes, has_numerical_thresholds=True, residuals=None):
         self.nodes = nodes
         self.has_numerical_thresholds = has_numerical_thresholds
+        self.residuals = residuals  # 2D array for multi-output, None for single output
 
     def get_n_leaf_nodes(self):
         """Return number of leaves."""
@@ -106,12 +109,14 @@ class TreePredictor:
         ----------
         binned_data : array-like of np.uint8, shape=(n_samples, n_features)
             The binned input samples.
-        out : array-like, shape=(n_samples,), optional (default=None)
+        prediction_dim : int
+            Number of output dimensions
+        out : array-like, shape=(n_samples, prediction_dim), optional (default=None)
             If not None, predictions will be written inplace in ``out``.
 
         Returns
         -------
-        y : array, shape (n_samples,)
+        y : array, shape (n_samples, prediction_dim)
             The raw predicted values.
         """
 
@@ -120,7 +125,11 @@ class TreePredictor:
 
         if out is None:
             out = np.empty((binned_data.shape[0], prediction_dim), dtype=np.float32)
-        _predict_binned_multi(self.nodes, binned_data, out)
+        
+        if self.residuals is None:
+            raise ValueError("No residuals available for multi-output prediction")
+            
+        _predict_binned_multi(self.nodes, self.residuals, binned_data, out)
         return out
 
     def predict_multi(self, X, prediction_dim):
@@ -130,10 +139,12 @@ class TreePredictor:
         ----------
         X : array-like, shape=(n_samples, n_features)
             The input samples.
+        prediction_dim : int
+            Number of output dimensions
 
         Returns
         -------
-        y : array, shape (n_samples,)
+        y : array, shape (n_samples, prediction_dim)
             The raw predicted values.
         """
         # TODO: introspect X to dispatch to numerical or categorical data
@@ -152,11 +163,15 @@ class TreePredictor:
                 'as numerical data'
             )
 
+        if self.residuals is None:
+            raise ValueError("No residuals available for multi-output prediction")
+
         out = np.empty((X.shape[0], prediction_dim), dtype=np.float32)
-        _predict_from_numeric_data_multi(self.nodes, X, out)
+        _predict_from_numeric_data_multi(self.nodes, self.residuals, X, out)
         return out
 
 
+@njit
 def _predict_one_binned(nodes, binned_data):
     node = nodes[0]
     while True:
@@ -168,11 +183,13 @@ def _predict_one_binned(nodes, binned_data):
             node = nodes[node['right']]
 
 
+@njit(parallel=True)
 def _predict_binned(nodes, binned_data, out):
     for i in prange(binned_data.shape[0]):
         out[i] = _predict_one_binned(nodes, binned_data[i])
 
 
+@njit
 def _predict_one_from_numeric_data(nodes, numeric_data):
     node = nodes[0]
     while True:
@@ -184,39 +201,107 @@ def _predict_one_from_numeric_data(nodes, numeric_data):
             node = nodes[node['right']]
 
 
+@njit(parallel=True)
 def _predict_from_numeric_data(nodes, numeric_data, out):
     for i in prange(numeric_data.shape[0]):
         out[i] = _predict_one_from_numeric_data(nodes, numeric_data[i])
 
 # ##########################Multi###############################
-def _predict_one_binned_multi(nodes, binned_data):
+@njit
+def _predict_one_binned_multi(nodes, residuals, binned_data):
+    """Predict single sample using binned data for multi-output.
+    
+    Parameters
+    ----------
+    nodes : structured array
+        Tree nodes
+    residuals : 2D array, shape=(n_leaves, n_outputs)
+        Residual values for each leaf
+    binned_data : 1D array
+        Binned features for one sample
+        
+    Returns
+    -------
+    residual_idx : int
+        Index of the leaf node in the residuals array
+    """
     node = nodes[0]
     while True:
         if node['is_leaf']:
-            return node['residual']
+            return node['residual_idx']
         if binned_data[node['feature_idx']] <= node['bin_threshold']:
             node = nodes[node['left']]
         else:
             node = nodes[node['right']]
 
 
-def _predict_binned_multi(nodes, binned_data, out):
+@njit(parallel=True)
+def _predict_binned_multi(nodes, residuals, binned_data, out):
+    """Predict multiple samples using binned data for multi-output.
+    
+    Parameters
+    ----------
+    nodes : structured array
+        Tree nodes
+    residuals : 2D array, shape=(n_leaves, n_outputs)
+        Residual values for each leaf
+    binned_data : 2D array, shape=(n_samples, n_features)
+        Binned features
+    out : 2D array, shape=(n_samples, n_outputs)
+        Output array to fill with predictions
+    """
     for i in prange(binned_data.shape[0]):
-        out[i] = _predict_one_binned_multi(nodes, binned_data[i])
+        residual_idx = _predict_one_binned_multi(nodes, residuals, binned_data[i])
+        for j in range(out.shape[1]):
+            out[i, j] = residuals[residual_idx, j]
 
 
-def _predict_one_from_numeric_data_multi(nodes, numeric_data):
+@njit
+def _predict_one_from_numeric_data_multi(nodes, residuals, numeric_data):
+    """Predict single sample using numeric data for multi-output.
+    
+    Parameters
+    ----------
+    nodes : structured array
+        Tree nodes
+    residuals : 2D array, shape=(n_leaves, n_outputs)
+        Residual values for each leaf
+    numeric_data : 1D array
+        Numeric features for one sample
+        
+    Returns
+    -------
+    residual_idx : int
+        Index of the leaf node in the residuals array
+    """
     node = nodes[0]
     while True:
         if node['is_leaf']:
-            return node['residual']
+            return node['residual_idx']
         if numeric_data[node['feature_idx']] <= node['threshold']:
             node = nodes[node['left']]
         else:
             node = nodes[node['right']]
 
 
-def _predict_from_numeric_data_multi(nodes, numeric_data, out):
+@njit(parallel=True)
+def _predict_from_numeric_data_multi(nodes, residuals, numeric_data, out):
+    """Predict multiple samples using numeric data for multi-output.
+    
+    Parameters
+    ----------
+    nodes : structured array
+        Tree nodes
+    residuals : 2D array, shape=(n_leaves, n_outputs)
+        Residual values for each leaf
+    numeric_data : 2D array, shape=(n_samples, n_features)
+        Numeric features
+    out : 2D array, shape=(n_samples, n_outputs)
+        Output array to fill with predictions
+    """
     for i in prange(numeric_data.shape[0]):
-        out[i] = _predict_one_from_numeric_data_multi(nodes, numeric_data[i])
+        residual_idx = _predict_one_from_numeric_data_multi(nodes, residuals, numeric_data[i])
+        for j in range(out.shape[1]):
+            out[i, j] = residuals[residual_idx, j]
+
 

@@ -428,16 +428,28 @@ class TreeGrower:
         A TreePredictor object.
         """
         predictor_nodes = np.zeros(self.n_nodes, dtype=PREDICTOR_RECORD_DTYPE)
+        
+        # Collect residuals from leaves for multi-output
+        residuals_list = []
         self._fill_predictor_node_array(
             predictor_nodes, self.root,
-            numerical_thresholds=numerical_thresholds
+            numerical_thresholds=numerical_thresholds,
+            residuals_list=residuals_list
         )
+        
+        # Convert residuals list to 2D array if multi-output
+        residuals = None
+        if residuals_list:
+            residuals = np.array(residuals_list, dtype=np.float32)
+        
         has_numerical_thresholds = numerical_thresholds is not None
         return TreePredictor(nodes=predictor_nodes,
-                             has_numerical_thresholds=has_numerical_thresholds)
+                             has_numerical_thresholds=has_numerical_thresholds,
+                             residuals=residuals)
 
     def _fill_predictor_node_array(self, predictor_nodes, grower_node,
-                                   numerical_thresholds=None, next_free_idx=0):
+                                   numerical_thresholds=None, next_free_idx=0,
+                                   residuals_list=None):
         """Helper used in make_predictor to set the TreePredictor fields."""
         node = predictor_nodes[next_free_idx]
         node['count'] = grower_node.n_samples
@@ -451,10 +463,16 @@ class TreeGrower:
             # Leaf node
             node['is_leaf'] = True
             node['value'] = grower_node.value
-            if grower_node.residual is not None:
-                node['residual'] = grower_node.residual
+            
+            # Handle multi-output residuals
+            if grower_node.residual is not None and residuals_list is not None:
+                # Multi-output: store residual in separate array
+                node['residual_idx'] = len(residuals_list)
+                residuals_list.append(grower_node.residual)
             else:
-                node['residual'] = grower_node.value
+                # Single output: use -1 to indicate no separate residual
+                node['residual_idx'] = -1
+            
             return next_free_idx + 1
         else:
             # Decision node
@@ -470,10 +488,12 @@ class TreeGrower:
             next_free_idx = self._fill_predictor_node_array(
                 predictor_nodes, grower_node.left_child,
                 numerical_thresholds=numerical_thresholds,
-                next_free_idx=next_free_idx)
+                next_free_idx=next_free_idx,
+                residuals_list=residuals_list)
 
             node['right'] = next_free_idx
             return self._fill_predictor_node_array(
                 predictor_nodes, grower_node.right_child,
                 numerical_thresholds=numerical_thresholds,
-                next_free_idx=next_free_idx)
+                next_free_idx=next_free_idx,
+                residuals_list=residuals_list)
