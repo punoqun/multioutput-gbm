@@ -836,6 +836,12 @@ def _update_raw_predictions(leaves_data, raw_predictions):
         The leaves data used to update raw_predictions.
     raw_predictions : array-like, shape=(n_samples,)
         The raw predictions for the training data.
+        
+    Notes
+    -----
+    Parallelization is safe here because each sample belongs to exactly one 
+    leaf in a tree, so sample_indices across different leaves are disjoint sets.
+    This means no two threads will ever write to the same index in raw_predictions.
     """
     for leaf_idx in prange(len(leaves_data)):
         leaf_value, sample_indices = leaves_data[leaf_idx]
