@@ -821,7 +821,7 @@ class GradientBoostingClassifier(BaseGradientBoostingMachine, ClassifierMixin):
         return _LOSSES[self.loss]()
 
 
-# @njit(parallel=True)
+@njit(parallel=True, fastmath=True)
 def _update_raw_predictions(leaves_data, raw_predictions):
     """Update raw_predictions by reading the predictions of the ith tree
     directly form the leaves.
